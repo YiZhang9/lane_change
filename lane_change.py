@@ -4,13 +4,25 @@ import matplotlib.pyplot as plt
 
 # Simulation Parameters
 dt = 0.05  # Time step (s)
-t_max = 10  # Simulation time (s)
+t_max = 15  # Simulation time (s)
 n_steps = int(t_max / dt)
 
 # Vehicle Parameters
 L_w = 2.5  # Vehicle wheelbase (m)
 v_d = 30   # Desired speed (m/s)
+a_C = 0.6  # Reaction time scaling factor for CAVs
+b_C = 0.1  # Minor axis scaling for safe region
+l = 4.0  # Lane width (m)
 
+# Control limits
+u_min = -3.3  # Minimum acceleration (m/s^2)
+nu_max = 7.0  # Maximum acceleration (m/s^2)
+phi_min = -ca.pi/4  # Minimum steering angle (rad)
+phi_max = ca.pi/4  # Maximum steering angle (rad)
+
+# Vehicle State Bounds
+v_min = 15  # Minimum speed (m/s)
+v_max = 35  # Maximum speed (m/s)
 def vehicle_dynamics(x, u):
     """CAV Dynamics Model"""
     theta = x[2]
