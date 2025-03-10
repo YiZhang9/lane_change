@@ -14,8 +14,13 @@ a_C = 0.6  # Reaction time scaling factor for CAVs
 b_C = 0.1  # Minor axis scaling for safe region
 l = 4.0  # Lane width (m)
 
+# Weighting parameters from Equation (5)
+alpha_u = 0.5  # Weight for control effort
+alpha_l = 1.0  # Weight for lane-keeping
+alpha_v = 1.0  # Weight for velocity deviation
+
 # Safety Set and Related Parameters
-u_min = -7.0  # Minimum acceleration (m/s^2)
+nu_min = -7.0  # Minimum acceleration (m/s^2)
 nu_max = 3.3   # Maximum acceleration (m/s^2)
 phi_min = -ca.pi/4  # Minimum steering angle (rad)
 phi_max = ca.pi/4  # Maximum steering angle (rad)
@@ -51,8 +56,8 @@ def HDV_dynamics(x_H, u_H):
     u_steer_H = u_H[1]
     
     dxdt = ca.vertcat(
-        v_H * ca.cos(theta_H) * sigma_1 + epsilon_1,
-        v_H * ca.sin(theta_H) * sigma_2 + epsilon_2,
+        v_H * ca.cos(theta_H) * sigma_1 - v_H * ca.sin(theta_H)*u_steer_H + epsilon_1,
+        v_H * ca.sin(theta_H) * sigma_2 + v_H * ca.cos(theta_H)*u_steer_H + epsilon_2,
         v_H / L_w * u_steer_H + epsilon_3,
         u_acc_H + epsilon_4
     )
@@ -66,8 +71,8 @@ def vehicle_dynamics(x, u):
     u_steer = u[1]  # Steering angle
     
     dxdt = ca.vertcat(
-        v * ca.cos(theta),
-        v * ca.sin(theta),
+        v * ca.cos(theta) - v * ca.sin(theta) * u_steer,
+        v * ca.sin(theta) + v * ca.cos(theta) * u_steer,
         v / L_w * u_steer,
         u_acc
     )
@@ -82,8 +87,13 @@ def solve_qp(x_C, x_H, x_U):
     opti = ca.Opti()
     u_C = opti.variable(2)  # Control variables (acceleration, steering)
     
+
     # Cost function (minimize deviation from desired speed and energy usage)
-    cost = ca.sumsqr(u_C) + ca.sumsqr(x_C[3] - v_d)
+    cost = (alpha_u * (ca.sumsqr(u_C)) 
+             + alpha_l * ((x_C_next[1] - l) ** 2) 
+             + alpha_v * (ca.sumsqr(x_C_next[3] - v_d))
+             + alpha_v * (ca.sumsqr(x_H[3] - v_d)))
+
     opti.minimize(cost)
     
     # Dynamics constraints
@@ -94,11 +104,15 @@ def solve_qp(x_C, x_H, x_U):
     opti.subject_to(safety_constraint(x_C_next, x_U, a_C, b_C) >= 0)  # CAV-Obstacle constraint
     
     # Control bounds
-    opti.subject_to(nu_min <= u_C[0] <= nu_max)  # Acceleration limits
-    opti.subject_to(phi_min <= u_C[1] <= phi_max)  # Steering limits
-    
+    opti.subject_to(nu_min <= u_C[0]) # Acceleration limits
+    opti.subject_to(u_C[0] <= nu_max)
+
+    opti.subject_to(phi_min <= u_C[1])  # Steering limits
+    opti.subject_to(u_C[1] <= phi_max)
+
     # Speed limits
-    opti.subject_to(v_min <= x_C_next[3] <= v_max)
+    opti.subject_to(v_min <= x_C_next[3])
+    opti.subject_to(x_C_next[3] <= v_max)
     
     # Solver settings
     opti.solver('ipopt')
